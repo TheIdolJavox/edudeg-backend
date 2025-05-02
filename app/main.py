@@ -8,6 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"message": "API de EdUdeG funcionando correctamente"}
+    
 # Configurar CORS para permitir peticiones desde tu dominio
 app.add_middleware(
     CORSMiddleware,
