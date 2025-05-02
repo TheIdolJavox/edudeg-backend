@@ -1,41 +1,60 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from io import StringIO
 import pandas as pd
-from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 
 app = FastAPI()
 
-# Permitir solicitudes desde tu frontend (Hostinger o localhost)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # O restringe a tu dominio real
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 @app.post("/procesar_csv")
 async def procesar_csv(file: UploadFile = File(...)):
-    # Leer el contenido del archivo
+    # Leer el archivo CSV recibido
     content = await file.read()
     content_str = content.decode("utf-8")
     df = pd.read_csv(StringIO(content_str))
 
-    # Validar columnas requeridas
-    required_columns = {'total_preguntas', 'errores'}
-    if not required_columns.issubset(df.columns):
-        return {"error": "El CSV debe contener las columnas: total_preguntas y errores"}
+    # Asegúrate de que el CSV tiene las columnas necesarias
+    if not all(col in df.columns for col in ['ID Resultado', 'Fecha', 'Nombre de Usuario', 'Tema', 'Total Preguntas', 'Errores', '% Errores']):
+        return {"error": "El CSV no contiene las columnas necesarias."}
 
-    # Procesamiento de modelo (ejemplo simple con regresión lineal)
-    try:
-        X = df[['total_preguntas', 'errores']]
-        y = df.get('porcentaje_error', X['errores'] / X['total_preguntas'] * 100)
-        model = LinearRegression()
-        model.fit(X, y)
-        df['predicciones'] = model.predict(X)
-    except Exception as e:
-        return {"error": f"Error al procesar el modelo: {str(e)}"}
+    # Convertir la columna de fecha a tipo datetime, especificando el formato
+    df['Fecha'] = pd.to_datetime(df['Fecha'], format='%d/%m/%Y', errors='coerce')
 
-    # Convertir todo el dataframe de vuelta a JSON
-    return df.to_dict(orient="records")
+    # Extraer características temporales de la fecha (por ejemplo: año, mes, día, día de la semana)
+    df['año'] = df['Fecha'].dt.year
+    df['mes'] = df['Fecha'].dt.month
+    df['día'] = df['Fecha'].dt.day
+    df['día_semana'] = df['Fecha'].dt.weekday
+
+    # Convertir la columna de porcentaje de error de cadena a número
+    df['% Errores'] = df['% Errores'].str.replace('%', '').astype(float) / 100.0
+
+    # Preprocesamiento de los datos
+    X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día', 'día_semana']]  # Características
+    y = df['% Errores']  # Etiqueta: porcentaje de errores
+
+    # Dividir los datos en entrenamiento y prueba
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Inicializar el modelo Random Forest
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+    # Entrenar el modelo
+    model.fit(X_train, y_train)
+
+    # Realizar predicciones
+    y_pred = model.predict(X_test)
+
+    # Evaluar el modelo
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    # Devolver las predicciones y las métricas de evaluación
+    df['predicciones'] = model.predict(X)  # Predicción sobre todo el dataset
+
+    return {
+        "mse": mse,
+        "r2": r2,
+        "predicciones": df.to_dict(orient="records")  # Devolver los resultados como un diccionario
+    }
