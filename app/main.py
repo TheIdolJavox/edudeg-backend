@@ -6,12 +6,10 @@ import pandas as pd
 import traceback
 import os
 
-
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.impute import SimpleImputer
-
 
 app = FastAPI()
 port = int(os.environ.get("PORT", 8000))
@@ -21,10 +19,10 @@ port = int(os.environ.get("PORT", 8000))
 def read_root():
     return {"message": "API de EdUdeG funcionando correctamente"}
 
-# Configurar CORS para permitir peticiones desde tu dominio
+# Configurar CORS para permitir peticiones desde el dominio
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://edudeg.com"],  # Cambiar al dominio de tu sitio
+    allow_origins=["https://edudeg.com"],  # Doominio del sitio
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,6 +44,9 @@ async def procesar_csv(file: UploadFile = File(...)):
                 content={"error": "El CSV no contiene las columnas necesarias."}
             )
 
+        # Imprimir CSV
+        print(df.isnull().sum())
+        
         # Convertir la columna 'Fecha' a tipo datetime
         df['Fecha'] = pd.to_datetime(df['Fecha'], format='%d/%m/%Y', errors='coerce')
 
@@ -59,18 +60,21 @@ async def procesar_csv(file: UploadFile = File(...)):
         df['% Errores'] = df['% Errores'].str.replace('%', '', regex=False).astype(float) / 100.0
 
         # Preparar los datos para el modelo
-        X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día', 'día_semana']]
-        y = df['% Errores']
+        X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día']]
+        y = df['% Errores'].fillna(df['% Errores'].mean())  # Imputar NaN de la columna de errores
 
-        # Imputar valores faltantes (NaN)
+        # Imputar valores faltantes en X (si los hubiera)
         imputer = SimpleImputer(strategy="mean")
         X_imputado = imputer.fit_transform(X)
-        y = y.fillna(y.mean())
-        
-        # División de los datos
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Entrenar modelo
+        # División de los datos en conjunto de entrenamiento y prueba
+        X_train, X_test, y_train, y_test = train_test_split(X_imputado, y, test_size=0.2, random_state=42)
+
+        # Asegurarse de que % Errores esté correctamente formateado
+        y_train = y_train.fillna(y_train.mean())  # En caso de que haya NaN en y_train
+        y_test = y_test.fillna(y_test.mean())  # En caso de que haya NaN en y_test
+
+        # Entrenar el modelo
         model = RandomForestRegressor(n_estimators=100, random_state=42)
         model.fit(X_train, y_train)
 
@@ -80,7 +84,7 @@ async def procesar_csv(file: UploadFile = File(...)):
         r2 = r2_score(y_test, y_pred)
 
         # Predecir para todo el dataset
-        df['predicciones'] = model.predict(X)
+        df['predicciones'] = model.predict(X_imputado)
 
         # Preparar datos para enviar
         predicciones = df[['ID Resultado', 'Nombre de Usuario', 'Tema', 'predicciones']].to_dict(orient="records")
