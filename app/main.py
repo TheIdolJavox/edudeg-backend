@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from io import StringIO
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -25,8 +25,9 @@ async def procesar_csv(file: UploadFile = File(...)):
     df = pd.read_csv(StringIO(content_str))
 
     # Asegúrate de que el CSV tiene las columnas necesarias
-    if not all(col in df.columns for col in ['ID Resultado', 'Fecha', 'Nombre de Usuario', 'Tema', 'Total Preguntas', 'Errores', '% Errores']):
-        return {"error": "El CSV no contiene las columnas necesarias."}
+    required_columns = ['ID Resultado', 'Fecha', 'Nombre de Usuario', 'Tema', 'Total Preguntas', 'Errores', '% Errores']
+    if not all(col in df.columns for col in required_columns):
+        raise HTTPException(status_code=400, detail="El CSV no contiene las columnas necesarias.")
 
     # Convertir la columna de fecha a tipo datetime, especificando el formato
     df['Fecha'] = pd.to_datetime(df['Fecha'], format='%d/%m/%Y', errors='coerce')
@@ -60,11 +61,15 @@ async def procesar_csv(file: UploadFile = File(...)):
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
-    # Devolver las predicciones y las métricas de evaluación
+    # Realizar las predicciones sobre todo el dataset
     df['predicciones'] = model.predict(X)  # Predicción sobre todo el dataset
 
+    # Crear un objeto con solo los datos relevantes para enviar
+    predicciones = df[['ID Resultado', 'Nombre de Usuario', 'Tema', 'predicciones']].to_dict(orient="records")
+
+    # Devolver las métricas y las predicciones
     return {
         "mse": mse,
         "r2": r2,
-        "predicciones": df.to_dict(orient="records")  # Devolver los resultados como un diccionario
+        "predicciones": predicciones  # Enviar solo las predicciones relevantes
     }
