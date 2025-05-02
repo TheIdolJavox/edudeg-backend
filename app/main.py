@@ -1,17 +1,17 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from io import StringIO
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Configuración de CORS
+# Configurar CORS para permitir peticiones desde tu dominio
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Cambia "*" por ["https://tu-sitio.com"] en producción para mayor seguridad
+    allow_origins=["https://edudeg.com"],  # Cambiar al dominio de tu sitio
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,39 +28,43 @@ async def procesar_csv(file: UploadFile = File(...)):
     if not all(col in df.columns for col in ['ID Resultado', 'Fecha', 'Nombre de Usuario', 'Tema', 'Total Preguntas', 'Errores', '% Errores']):
         return {"error": "El CSV no contiene las columnas necesarias."}
 
-    # Convertir la columna de fecha a tipo datetime
+    # Convertir la columna de fecha a tipo datetime, especificando el formato
     df['Fecha'] = pd.to_datetime(df['Fecha'], format='%d/%m/%Y', errors='coerce')
 
-    # Extraer características de la fecha
+    # Extraer características temporales de la fecha (por ejemplo: año, mes, día, día de la semana)
     df['año'] = df['Fecha'].dt.year
     df['mes'] = df['Fecha'].dt.month
     df['día'] = df['Fecha'].dt.day
     df['día_semana'] = df['Fecha'].dt.weekday
 
-    # Limpiar y convertir el porcentaje
+    # Convertir la columna de porcentaje de error de cadena a número
     df['% Errores'] = df['% Errores'].str.replace('%', '').astype(float) / 100.0
 
-    # Seleccionar características y etiqueta
-    X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día', 'día_semana']]
-    y = df['% Errores']
+    # Preprocesamiento de los datos
+    X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día', 'día_semana']]  # Características
+    y = df['% Errores']  # Etiqueta: porcentaje de errores
 
-    # Dividir los datos
+    # Dividir los datos en entrenamiento y prueba
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Modelo
+    # Inicializar el modelo Random Forest
     model = RandomForestRegressor(n_estimators=100, random_state=42)
+
+    # Entrenar el modelo
     model.fit(X_train, y_train)
 
-    # Evaluación
+    # Realizar predicciones
     y_pred = model.predict(X_test)
+
+    # Evaluar el modelo
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
-    # Predicciones sobre el conjunto completo
-    df['predicciones'] = model.predict(X)
+    # Devolver las predicciones y las métricas de evaluación
+    df['predicciones'] = model.predict(X)  # Predicción sobre todo el dataset
 
     return {
         "mse": mse,
         "r2": r2,
-        "predicciones": df.to_dict(orient="records")
+        "predicciones": df.to_dict(orient="records")  # Devolver los resultados como un diccionario
     }
