@@ -13,7 +13,6 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 app = FastAPI()
 port = int(os.environ.get("PORT", 8000))
-uvicorn.run("app.main:app", host="0.0.0.0", port=port)
 
 # Ruta básica para verificar si la API está activa
 @app.get("/")
@@ -61,6 +60,11 @@ async def procesar_csv(file: UploadFile = File(...)):
         X = df[['Total Preguntas', 'Errores', 'año', 'mes', 'día', 'día_semana']]
         y = df['% Errores']
 
+        # Imputar valores faltantes (NaN)
+        imputer = SimpleImputer(strategy="mean")
+        X_imputado = imputer.fit_transform(X)
+        y = y.fillna(y.mean())
+        
         # División de los datos
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
