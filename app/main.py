@@ -4,12 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from io import StringIO
 import pandas as pd
 import traceback
+import os
+
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 app = FastAPI()
+port = int(os.environ.get("PORT", 8000))
+uvicorn.run("app.main:app", host="0.0.0.0", port=port)
 
 # Ruta básica para verificar si la API está activa
 @app.get("/")
